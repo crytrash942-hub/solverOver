@@ -121,6 +121,7 @@ class TurnstileSolver:
         """)
 
         self.driver.execute_cdp_cmd('Browser.getWindowForTarget', {})
+        self.driver.set_script_timeout(45)
         if not HEADLESS:
             self.driver.minimize_window()
         print("[OK] Navegador pronto!")
@@ -133,7 +134,7 @@ class TurnstileSolver:
             self.driver.get(self.url)
 
             print("[*] Aguardando carregamento da pagina...")
-            time.sleep(random.uniform(5, 8))
+            time.sleep(random.uniform(4, 6))
 
             current_url = self.driver.current_url
             page_title = self.driver.title
@@ -142,26 +143,83 @@ class TurnstileSolver:
             print("[*] Simulando navegacao humana...")
             self._simulate_human()
 
-            print("[*] Verificando Turnstile...")
-            self._handle_turnstile()
+            print("[*] Aguardando API do Turnstile...")
+            self._wait_for_turnstile_api()
+
+            print("[*] Resolvendo Turnstile via JS...")
+            self._solve_via_js()
 
             print("[*] Aguardando bypass...")
-            time.sleep(random.uniform(5, 10))
+            time.sleep(random.uniform(3, 6))
 
             self._extract_tokens()
 
-            if self.token or self.cf_clearance:
+            if self.token:
                 print("[OK] TURNSTILE BYPASSADO COM SUCESSO!")
                 return True
             else:
-                print("[OK] Bypass aparentemente concluido (verifique manualmente)")
-                return True
+                print("[X] Nao foi possivel obter o token")
+                return False
 
         except Exception as e:
             print(f"[X] Erro critico: {e}")
             import traceback
             traceback.print_exc()
             return False
+
+    def _wait_for_turnstile_api(self):
+        for i in range(10):
+            try:
+                ok = self.driver.execute_script(
+                    "return typeof turnstile !== 'undefined' "
+                    "&& document.querySelector('.cf-turnstile, [data-sitekey]') !== null"
+                )
+                if ok:
+                    print("[OK] API e widget Turnstile prontos")
+                    return
+            except:
+                pass
+            time.sleep(2)
+        print("[!] API do Turnstile nao detectada")
+
+    def _solve_via_js(self):
+        try:
+            self.driver.execute_script("""
+                var w = document.querySelectorAll('.cf-turnstile, [data-sitekey]');
+                for (var i = 0; i < w.length; i++) {
+                    try { turnstile.render(w[i]); }
+                    catch (e) { try { turnstile.execute(w[i]); } catch (e2) {} }
+                }
+            """)
+            time.sleep(3)
+
+            token = self.driver.execute_async_script("""
+                var done = arguments[arguments.length - 1];
+                function getToken() {
+                    try {
+                        var t = turnstile.getResponse();
+                        if (t && t.length > 20) return t;
+                    } catch (e) {}
+                    var inputs = document.querySelectorAll('input[name="cf-turnstile-response"]');
+                    for (var i = 0; i < inputs.length; i++) {
+                        if (inputs[i].value && inputs[i].value.length > 20) return inputs[i].value;
+                    }
+                    return null;
+                }
+                var start = Date.now();
+                function poll() {
+                    var t = getToken();
+                    if (t) { done(t); return; }
+                    if (Date.now() - start > 30000) { done(null); return; }
+                    setTimeout(poll, 1000);
+                }
+                poll();
+            """)
+            if token:
+                self.token = token
+                print(f"[OK] Token obtido via JS: {token[:50]}...")
+        except Exception as e:
+            print(f"[!] Erro no solve via JS: {e}")
 
     def _simulate_human(self):
         try:
@@ -417,18 +475,30 @@ def run_bypass(url, verbose=True):
     solver.close()
     return tokens
 
-def solve_turnstile_token(url):
-    solver = TurnstileSolver(url)
-    try:
-        ok = solver.solve_turnstile()
-        tokens = solver.get_tokens()
-    finally:
-        solver.close()
-    return {
-        'success': ok,
-        'turnstile_token': tokens.get('turnstile_token'),
-        'cf_clearance': tokens.get('cf_clearance'),
+def solve_turnstile_token(url, max_attempts=2):
+    last = {
+        'success': False,
+        'turnstile_token': None,
+        'cf_clearance': None,
     }
+    for attempt in range(max_attempts):
+        solver = TurnstileSolver(url)
+        try:
+            ok = solver.solve_turnstile()
+            tokens = solver.get_tokens()
+            last = {
+                'success': ok,
+                'turnstile_token': tokens.get('turnstile_token'),
+                'cf_clearance': tokens.get('cf_clearance'),
+            }
+        finally:
+            solver.close()
+        if last.get('turnstile_token'):
+            break
+        if attempt < max_attempts - 1:
+            print(f"[!] Tentativa {attempt + 1} sem token, tentando de novo...")
+            time.sleep(3)
+    return last
 
 def main():
     print("[?] Digite a URL do site com Turnstile:")
