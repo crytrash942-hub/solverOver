@@ -237,6 +237,16 @@ class TurnstileSolver:
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-gpu')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-background-networking')
+            options.add_argument('--disable-component-update')
+            options.add_argument('--disable-default-apps')
+            options.add_argument('--disable-sync')
+            options.add_argument('--metrics-recording-only')
+            options.add_argument('--mute-audio')
+            options.add_argument('--disable-software-rasterizer')
+            options.add_argument('--no-first-run')
+            options.add_argument('--disable-features=TranslateUI,AutofillServerCommunication,CalculateNativeWinOcclusion,MediaRouter')
             options.add_argument(
                 f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                 f'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -292,7 +302,7 @@ class TurnstileSolver:
             self.driver.get(self.url)
 
             print("[*] Aguardando carregamento da pagina...")
-            time.sleep(random.uniform(4, 6))
+            time.sleep(random.uniform(2.5, 4))
 
             current_url = self.driver.current_url
             page_title = self.driver.title
@@ -308,7 +318,7 @@ class TurnstileSolver:
             self._solve_via_js()
 
             print("[*] Aguardando bypass...")
-            time.sleep(random.uniform(3, 6))
+            time.sleep(random.uniform(2, 3))
 
             self._extract_tokens()
 
