@@ -16,6 +16,10 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import undetected_chromedriver as uc
 
+HEADLESS = os.environ.get('HEADLESS', '0') == '1'
+CHROME_BIN = os.environ.get('CHROME_BIN')
+CHROMEDRIVER_BIN = os.environ.get('CHROMEDRIVER_BIN')
+
 
 class Config:
     HUMAN_TYPING_SPEED_MIN = 0.05
@@ -29,6 +33,12 @@ class Config:
 
 def get_chrome_version():
     try:
+        if CHROME_BIN and os.path.exists(CHROME_BIN):
+            output = subprocess.check_output([CHROME_BIN, '--version'], encoding='utf-8')
+            match = re.search(r'(\d+)\.', output.strip())
+            if match:
+                return int(match.group(1))
+
         if os.name == 'nt':
             paths = [
                 r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -44,10 +54,14 @@ def get_chrome_version():
                     if match:
                         return int(match.group(1))
 
-        output = subprocess.check_output(['google-chrome', '--version'], encoding='utf-8')
-        version = re.search(r'(\d+)\.', output)
-        if version:
-            return int(version.group(1))
+        for cmd in (['google-chrome', '--version'], ['chromium', '--version'], ['chromium-browser', '--version']):
+            try:
+                output = subprocess.check_output(cmd, encoding='utf-8')
+                version = re.search(r'(\d+)\.', output.strip())
+                if version:
+                    return int(version.group(1))
+            except:
+                continue
     except:
         pass
 
@@ -71,22 +85,44 @@ class TurnstileSolver:
         options.add_argument(f'--window-size={Config.SCREEN_WIDTH},{Config.SCREEN_HEIGHT}')
         options.add_argument('--accept-lang=pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7')
 
+        if HEADLESS:
+            options.add_argument('--headless=new')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument(
+                f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                f'AppleWebKit/537.36 (KHTML, like Gecko) '
+                f'Chrome/{self.chrome_version}.0.0.0 Safari/537.36'
+            )
+
+        kwargs = {'version_main': self.chrome_version}
+        if CHROME_BIN:
+            kwargs['browser_executable_path'] = CHROME_BIN
+        if CHROMEDRIVER_BIN:
+            kwargs['driver_executable_path'] = CHROMEDRIVER_BIN
+
         print(f"[*] Criando driver para Chrome {self.chrome_version}...")
 
         try:
-            self.driver = uc.Chrome(options=options, version_main=self.chrome_version)
+            self.driver = uc.Chrome(options=options, **kwargs)
         except Exception as e:
             print(f"[X] Erro ao criar driver: {e}")
             fallback_options = uc.ChromeOptions()
             fallback_options.add_argument('--disable-blink-features=AutomationControlled')
-            self.driver = uc.Chrome(options=fallback_options)
+            if HEADLESS:
+                fallback_options.add_argument('--headless=new')
+                fallback_options.add_argument('--no-sandbox')
+                fallback_options.add_argument('--disable-dev-shm-usage')
+            self.driver = uc.Chrome(options=fallback_options, **kwargs)
 
         self.driver.execute_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
         """)
 
         self.driver.execute_cdp_cmd('Browser.getWindowForTarget', {})
-        self.driver.minimize_window()
+        if not HEADLESS:
+            self.driver.minimize_window()
         print("[OK] Navegador pronto!")
 
     def solve_turnstile(self):
@@ -380,6 +416,19 @@ def run_bypass(url, verbose=True):
 
     solver.close()
     return tokens
+
+def solve_turnstile_token(url):
+    solver = TurnstileSolver(url)
+    try:
+        ok = solver.solve_turnstile()
+        tokens = solver.get_tokens()
+    finally:
+        solver.close()
+    return {
+        'success': ok,
+        'turnstile_token': tokens.get('turnstile_token'),
+        'cf_clearance': tokens.get('cf_clearance'),
+    }
 
 def main():
     print("[?] Digite a URL do site com Turnstile:")

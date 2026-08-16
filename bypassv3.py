@@ -4,6 +4,7 @@ import json
 import requests
 from urllib.parse import urlparse, parse_qs
 from flask import Flask, request, jsonify
+from BypassTurns import solve_turnstile_token
 
 app = Flask(__name__)
 
@@ -119,6 +120,27 @@ def solve():
     try:
         token = solve_recaptcha(recaptcha_url_get, recaptcha_url_post)
         return jsonify({'success': bool(token), 'token': token})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/solve-turnstile', methods=['POST'])
+def solve_turnstile():
+    data = request.get_json(silent=True) or {}
+
+    url = data.get('url')
+    if not url:
+        return jsonify({
+            'success': False,
+            'error': 'Campo obrigatorio: url'
+        }), 400
+
+    if not url.startswith('http'):
+        url = 'https://' + url
+
+    try:
+        result = solve_turnstile_token(url)
+        return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
