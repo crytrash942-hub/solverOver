@@ -1,11 +1,11 @@
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    HEADLESS=1
+    HEADLESS=1 \
+    CHROME_BIN=/usr/bin/chromium
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    gnupg2 \
+    chromium \
     libnss3 \
     libx11-xcb1 \
     libxcb1 \
@@ -28,10 +28,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
-
-RUN wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    dpkg -i /tmp/chrome.deb || apt-get install -y -f && \
-    rm /tmp/chrome.deb
 
 WORKDIR /app
 COPY requirements.txt .
