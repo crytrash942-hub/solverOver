@@ -36,4 +36,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 EXPOSE 10000
-CMD ["sh", "-c", "gunicorn bypassv3:app --workers 1 --threads 2 --timeout 100 --bind 0.0.0.0:${PORT:-10000}"]
+CMD ["sh", "-c", "gunicorn turnstile_api:app --workers 1 --threads 2 --timeout 100 --bind 0.0.0.0:${PORT:-10000}"]

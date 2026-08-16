@@ -69,8 +69,9 @@ def get_chrome_version():
     return 120
 
 class TurnstileSolver:
-    def __init__(self, url):
+    def __init__(self, url, proxy=None):
         self.url = url
+        self.proxy = proxy
         self.driver = None
         self.token = None
         self.cf_clearance = None
@@ -95,6 +96,10 @@ class TurnstileSolver:
                 f'AppleWebKit/537.36 (KHTML, like Gecko) '
                 f'Chrome/{self.chrome_version}.0.0.0 Safari/537.36'
             )
+
+        if self.proxy:
+            options.add_argument(f'--proxy-server={self.proxy}')
+            print(f"[*] Usando proxy: {self.proxy}")
 
         kwargs = {'version_main': self.chrome_version}
         if CHROME_BIN:
@@ -486,14 +491,14 @@ def run_bypass(url, verbose=True):
     solver.close()
     return tokens
 
-def solve_turnstile_token(url, max_attempts=1):
+def solve_turnstile_token(url, max_attempts=1, proxy=None):
     last = {
         'success': False,
         'turnstile_token': None,
         'cf_clearance': None,
     }
     for attempt in range(max_attempts):
-        solver = TurnstileSolver(url)
+        solver = TurnstileSolver(url, proxy=proxy)
         try:
             ok = solver.solve_turnstile()
             tokens = solver.get_tokens()
