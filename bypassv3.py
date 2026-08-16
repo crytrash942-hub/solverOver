@@ -139,7 +139,10 @@ def solve_turnstile():
         url = 'https://' + url
 
     try:
-        result = solve_turnstile_token(url)
+        attempts = int(data.get('max_attempts', 1))
+        if attempts < 1 or attempts > 3:
+            attempts = 1
+        result = solve_turnstile_token(url, max_attempts=attempts)
         return jsonify(result)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

@@ -185,13 +185,20 @@ class TurnstileSolver:
     def _solve_via_js(self):
         try:
             self.driver.execute_script("""
+                window.__tsErr = null;
                 var w = document.querySelectorAll('.cf-turnstile, [data-sitekey]');
                 for (var i = 0; i < w.length; i++) {
-                    try { turnstile.render(w[i]); }
-                    catch (e) { try { turnstile.execute(w[i]); } catch (e2) {} }
+                    try {
+                        turnstile.render(w[i], {
+                            'error-callback': function (e) { window.__tsErr = String(e); }
+                        });
+                    }
+                    catch (e) {
+                        try { turnstile.execute(w[i]); } catch (e2) {}
+                    }
                 }
             """)
-            time.sleep(3)
+            time.sleep(2)
 
             token = self.driver.execute_async_script("""
                 var done = arguments[arguments.length - 1];
@@ -210,7 +217,7 @@ class TurnstileSolver:
                 function poll() {
                     var t = getToken();
                     if (t) { done(t); return; }
-                    if (Date.now() - start > 30000) { done(null); return; }
+                    if (Date.now() - start > 15000) { done(null); return; }
                     setTimeout(poll, 1000);
                 }
                 poll();
@@ -218,6 +225,10 @@ class TurnstileSolver:
             if token:
                 self.token = token
                 print(f"[OK] Token obtido via JS: {token[:50]}...")
+            else:
+                err = self.driver.execute_script("return window.__tsErr || null;")
+                if err:
+                    print(f"[!] Erro do widget Turnstile: {err}")
         except Exception as e:
             print(f"[!] Erro no solve via JS: {e}")
 
@@ -475,7 +486,7 @@ def run_bypass(url, verbose=True):
     solver.close()
     return tokens
 
-def solve_turnstile_token(url, max_attempts=2):
+def solve_turnstile_token(url, max_attempts=1):
     last = {
         'success': False,
         'turnstile_token': None,
