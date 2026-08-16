@@ -28,6 +28,20 @@ CHROME_BIN = os.environ.get('CHROME_BIN')
 CHROMEDRIVER_BIN = os.environ.get('CHROMEDRIVER_BIN')
 
 
+def log_memory(label):
+    try:
+        if os.name == 'nt':
+            return
+        with open('/proc/meminfo') as f:
+            for line in f:
+                if line.startswith('MemAvailable'):
+                    avail = int(line.split()[1]) // 1024
+                    print(f"[MEM] {label}: {avail} MB disponiveis")
+                    return
+    except Exception:
+        pass
+
+
 class Config:
     HUMAN_TYPING_SPEED_MIN = 0.05
     HUMAN_TYPING_SPEED_MAX = 0.25
@@ -226,6 +240,7 @@ class TurnstileSolver:
     def setup_driver(self):
         print(f"[*] Versao do Chrome detectada: {self.chrome_version}")
         print("[*] Configurando navegador...")
+        log_memory('antes do Chrome')
 
         options = uc.ChromeOptions()
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -246,6 +261,8 @@ class TurnstileSolver:
             options.add_argument('--mute-audio')
             options.add_argument('--disable-software-rasterizer')
             options.add_argument('--no-first-run')
+            options.add_argument('--renderer-process-limit=1')
+            options.add_argument('--process-per-site')
             options.add_argument('--disable-features=TranslateUI,AutofillServerCommunication,CalculateNativeWinOcclusion,MediaRouter')
             options.add_argument(
                 f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -293,6 +310,7 @@ class TurnstileSolver:
         if not HEADLESS:
             self.driver.minimize_window()
         print("[OK] Navegador pronto!")
+        log_memory('apos Chrome pronto')
 
     def solve_turnstile(self):
         try:
@@ -319,6 +337,7 @@ class TurnstileSolver:
 
             print("[*] Aguardando bypass...")
             time.sleep(random.uniform(2, 3))
+            log_memory('durante solve')
 
             self._extract_tokens()
 
@@ -402,23 +421,12 @@ class TurnstileSolver:
 
     def _simulate_human(self):
         try:
-            for _ in range(random.randint(2, 4)):
-                scroll_amount = random.randint(100, 500)
+            for _ in range(random.randint(1, 2)):
+                scroll_amount = random.randint(100, 300)
                 self.driver.execute_script(f"window.scrollBy(0, {scroll_amount})")
-                time.sleep(random.uniform(0.5, 1.5))
+                time.sleep(random.uniform(0.4, 0.8))
 
-            actions = ActionChains(self.driver)
-            for _ in range(random.randint(3, 5)):
-                try:
-                    x = random.randint(100, Config.SCREEN_WIDTH - 100)
-                    y = random.randint(100, Config.SCREEN_HEIGHT - 100)
-                    actions.move_by_offset(x, y)
-                    actions.perform()
-                    time.sleep(random.uniform(0.2, 0.5))
-                except:
-                    pass
-
-            time.sleep(random.uniform(1, 2))
+            time.sleep(random.uniform(0.5, 1.2))
 
         except Exception as e:
             print(f"[!] Erro na simulacao: {e}")
