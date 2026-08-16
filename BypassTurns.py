@@ -5,8 +5,15 @@ import json
 import re
 import sys
 import os
+import socket
+import threading
+import tempfile
 import random
+import base64
 import subprocess
+import http.client
+from urllib.parse import urlparse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -68,10 +75,149 @@ def get_chrome_version():
     print("[!] Nao foi possivel detectar versao do Chrome. Usando 120")
     return 120
 
+class LocalProxy:
+    def __init__(self, upstream_url):
+        parsed = urlparse(upstream_url)
+        self.upstream_host = parsed.hostname
+        self.upstream_port = parsed.port or 80
+        self.auth = None
+        if parsed.username:
+            raw = f"{parsed.username}:{parsed.password or ''}"
+            self.auth = f"Basic {base64.b64encode(raw.encode()).decode()}"
+
+    def _forward_http(self, method, path, headers, body, sock):
+        conn = http.client.HTTPConnection(self.upstream_host, self.upstream_port, timeout=60)
+        try:
+            fwd = {k: v for k, v in headers.items() if k.lower() != 'proxy-authorization'}
+            if self.auth:
+                fwd['Proxy-Authorization'] = self.auth
+            conn.request(method, path, body=body, headers=fwd)
+            resp = conn.getresponse()
+            data = resp.read()
+            sock.sendall(f"HTTP/1.1 {resp.status} {resp.reason}\r\n".encode())
+            skip = {'transfer-encoding', 'connection', 'proxy-authenticate'}
+            for k, v in resp.getheaders():
+                if k.lower() not in skip:
+                    sock.sendall(f"{k}: {v}\r\n".encode())
+            sock.sendall(f"Content-Length: {len(data)}\r\n\r\n".encode())
+            sock.sendall(data)
+        finally:
+            conn.close()
+
+    def handle(self, sock, addr):
+        try:
+            sock.settimeout(30)
+            f = sock.makefile('rb')
+            request_line = f.readline()
+            if not request_line:
+                return
+            parts = request_line.decode('latin-1', 'replace').strip().split()
+            if len(parts) < 3:
+                return
+            method, path, version = parts[0], parts[1], parts[2]
+
+            headers = {}
+            while True:
+                line = f.readline()
+                if not line or line in (b'\r\n', b'\n'):
+                    break
+                key, _, value = line.decode('latin-1', 'replace').partition(':')
+                headers[key.strip().lower()] = value.strip()
+
+            if method == 'CONNECT':
+                self._handle_connect(sock, path)
+                return
+
+            length = int(headers.get('content-length', '0') or 0)
+            body = f.read(length) if length else None
+            self._forward_http(method, path, headers, body, sock)
+        except Exception:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    def _handle_connect(self, sock, target):
+        try:
+            upstream = socket.create_connection((self.upstream_host, self.upstream_port), timeout=60)
+            req = f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n"
+            if self.auth:
+                req += f"Proxy-Authorization: {self.auth}\r\n"
+            req += "\r\n"
+            upstream.sendall(req.encode())
+
+            resp = b""
+            while b"\r\n\r\n" not in resp:
+                chunk = upstream.recv(4096)
+                if not chunk:
+                    break
+                resp += chunk
+                if len(resp) > 65536:
+                    break
+
+            if b" 200 " not in resp.split(b"\r\n")[0]:
+                sock.sendall(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+                upstream.close()
+                return
+
+            sock.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+
+            def pipe(src, dst):
+                try:
+                    while True:
+                        data = src.recv(65536)
+                        if not data:
+                            break
+                        dst.sendall(data)
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        dst.shutdown(socket.SHUT_WR)
+                    except Exception:
+                        pass
+
+            t1 = threading.Thread(target=pipe, args=(sock, upstream), daemon=True)
+            t2 = threading.Thread(target=pipe, args=(upstream, sock), daemon=True)
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+            upstream.close()
+        except Exception:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+
+def start_local_proxy(upstream_url):
+    import socket as _s
+    server = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+    server.bind(('127.0.0.1', 0))
+    server.listen(50)
+    server.settimeout(1)
+    port = server.getsockname()[1]
+    proxy = LocalProxy(upstream_url)
+    running = {'stop': False}
+
+    def acceptor():
+        while not running['stop']:
+            try:
+                conn, addr = server.accept()
+                threading.Thread(target=proxy.handle, args=(conn, addr), daemon=True).start()
+            except Exception:
+                if running['stop']:
+                    break
+    threading.Thread(target=acceptor, daemon=True).start()
+    return running, port
+
+
 class TurnstileSolver:
     def __init__(self, url, proxy=None):
         self.url = url
         self.proxy = proxy
+        self.local_proxy = None
         self.driver = None
         self.token = None
         self.cf_clearance = None
@@ -98,8 +244,15 @@ class TurnstileSolver:
             )
 
         if self.proxy:
-            options.add_argument(f'--proxy-server={self.proxy}')
-            print(f"[*] Usando proxy: {self.proxy}")
+            parsed = urlparse(self.proxy)
+            proxy_arg = self.proxy
+            if parsed.username:
+                self.local_proxy = start_local_proxy(self.proxy)
+                proxy_arg = f"http://127.0.0.1:{self.local_proxy[1]}"
+                print(f"[*] Proxy local em {proxy_arg} -> {parsed.hostname}:{parsed.port}")
+            else:
+                print(f"[*] Usando proxy: {parsed.hostname}:{parsed.port}")
+            options.add_argument(f'--proxy-server={proxy_arg}')
 
         kwargs = {'version_main': self.chrome_version}
         if CHROME_BIN:
@@ -462,6 +615,12 @@ class TurnstileSolver:
             except:
                 pass
             self.driver = None
+        if self.local_proxy:
+            try:
+                self.local_proxy[0]['stop'] = True
+            except:
+                pass
+            self.local_proxy = None
 
 def run_bypass(url, verbose=True):
     if verbose:
