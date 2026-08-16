@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     chromium-driver \
     fonts-liberation \
+    fonts-dejavu-core \
+    fonts-noto-core \
     libnss3 \
     libx11-xcb1 \
     libxcb1 \

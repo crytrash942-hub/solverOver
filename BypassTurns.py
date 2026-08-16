@@ -264,11 +264,18 @@ class TurnstileSolver:
             options.add_argument('--renderer-process-limit=1')
             options.add_argument('--process-per-site')
             options.add_argument('--disable-features=TranslateUI,AutofillServerCommunication,CalculateNativeWinOcclusion,MediaRouter')
-            options.add_argument(
-                f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                f'AppleWebKit/537.36 (KHTML, like Gecko) '
-                f'Chrome/{self.chrome_version}.0.0.0 Safari/537.36'
-            )
+            if os.name == 'nt':
+                options.add_argument(
+                    f'--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    f'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    f'Chrome/{self.chrome_version}.0.0.0 Safari/537.36'
+                )
+            else:
+                options.add_argument(
+                    f'--user-agent=Mozilla/5.0 (X11; Linux x86_64) '
+                    f'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    f'Chrome/{self.chrome_version}.0.0.0 Safari/537.36'
+                )
 
         if self.proxy:
             parsed = urlparse(self.proxy)
