@@ -1,16 +1,11 @@
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    HEADLESS=1 \
-    CHROME_BIN=/usr/bin/chromium \
-    CHROMEDRIVER_BIN=/usr/bin/chromedriver
+    HEADLESS=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-driver \
-    fonts-liberation \
-    fonts-dejavu-core \
-    fonts-noto-core \
+    wget \
+    gnupg2 \
     libnss3 \
     libx11-xcb1 \
     libxcb1 \
@@ -29,7 +24,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpangocairo-1.0-0 \
     libpango-1.0-0 \
     libxshmfence1 \
+    fonts-liberation \
+    fonts-dejavu-core \
+    fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
+
+RUN wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+    dpkg -i /tmp/chrome.deb || apt-get install -y -f && \
+    rm /tmp/chrome.deb
 
 WORKDIR /app
 COPY requirements.txt .
