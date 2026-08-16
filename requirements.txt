@@ -1,3 +1,5 @@
 flask
 requests
 gunicorn
+selenium==4.47.0
+undetected-chromedriver==3.5.5
