@@ -75,7 +75,7 @@ def get_chrome_version():
                     if match:
                         return int(match.group(1))
 
-        for cmd in (['google-chrome', '--version'], ['chromium', '--version'], ['chromium-browser', '--version']):
+        for cmd in (['google-chrome', '--version'], ['google-chrome-stable', '--version'], ['chromium', '--version'], ['chromium-browser', '--version']):
             try:
                 output = subprocess.check_output(cmd, encoding='utf-8')
                 version = re.search(r'(\d+)\.', output.strip())
@@ -293,6 +293,13 @@ class TurnstileSolver:
             kwargs['browser_executable_path'] = CHROME_BIN
         if CHROMEDRIVER_BIN:
             kwargs['driver_executable_path'] = CHROMEDRIVER_BIN
+
+        if not kwargs.get('browser_executable_path'):
+            for p in ['/usr/bin/google-chrome-stable', '/usr/bin/google-chrome',
+                      '/usr/bin/chromium']:
+                if os.path.exists(p):
+                    kwargs['browser_executable_path'] = p
+                    break
 
         print(f"[*] Criando driver para Chrome {self.chrome_version}...")
 
