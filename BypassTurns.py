@@ -385,13 +385,42 @@ class TurnstileSolver:
 
     def _solve_via_js(self):
         try:
+            diagnostico = self.driver.execute_script("""
+                var info = {};
+                info.hasTurnstile = typeof turnstile !== 'undefined';
+                info.widgets = document.querySelectorAll('.cf-turnstile, [data-sitekey]').length;
+                info.iframes = document.querySelectorAll('iframe').length;
+                info.widgetIds = [];
+                info.sitekeys = [];
+                var w = document.querySelectorAll('.cf-turnstile, [data-sitekey]');
+                for (var i = 0; i < w.length; i++) {
+                    info.sitekeys.push(w[i].getAttribute('data-sitekey') || 'none');
+                    info.widgetIds.push(w[i].id || 'no-id-' + i);
+                }
+                if (info.hasTurnstile) {
+                    try {
+                        var widgetId = turnstile.getResponse() ? 'has-response' : 'no-response';
+                        info.turnstileGetResponse = widgetId;
+                    } catch(e) { info.turnstileGetResponse = 'error: ' + e.message; }
+                    try {
+                        var ids = turnstile._widgets ? Object.keys(turnstile._widgets) : [];
+                        info.turnstileWidgetIds = ids;
+                    } catch(e) {}
+                }
+                info.bodyText = document.body ? document.body.innerText.substring(0, 300) : '';
+                return info;
+            """)
+            print(f"[DIAG] {diagnostico}")
+
             self.driver.execute_script("""
                 window.__tsErr = null;
+                window.__tsToken = null;
                 var w = document.querySelectorAll('.cf-turnstile, [data-sitekey]');
                 for (var i = 0; i < w.length; i++) {
                     try {
                         turnstile.render(w[i], {
-                            'error-callback': function (e) { window.__tsErr = String(e); }
+                            'error-callback': function (e) { window.__tsErr = String(e); },
+                            'callback': function (t) { window.__tsToken = t; }
                         });
                     }
                     catch (e) {
@@ -399,7 +428,7 @@ class TurnstileSolver:
                     }
                 }
             """)
-            time.sleep(2)
+            time.sleep(3)
 
             token = self.driver.execute_async_script("""
                 var done = arguments[arguments.length - 1];
@@ -412,13 +441,14 @@ class TurnstileSolver:
                     for (var i = 0; i < inputs.length; i++) {
                         if (inputs[i].value && inputs[i].value.length > 20) return inputs[i].value;
                     }
+                    if (window.__tsToken && window.__tsToken.length > 20) return window.__tsToken;
                     return null;
                 }
                 var start = Date.now();
                 function poll() {
                     var t = getToken();
                     if (t) { done(t); return; }
-                    if (Date.now() - start > 15000) { done(null); return; }
+                    if (Date.now() - start > 20000) { done(null); return; }
                     setTimeout(poll, 1000);
                 }
                 poll();
