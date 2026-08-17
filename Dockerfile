@@ -1,9 +1,11 @@
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    HEADLESS=1
+    HEADLESS=1 \
+    NO_HEADLESS=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
     wget gnupg2 \
     libnss3 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
     libxi6 libxtst6 libxrandr2 libasound2 libatk1.0-0 libatk-bridge2.0-0 \
@@ -23,4 +25,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 EXPOSE 10000
-CMD ["sh", "-c", "gunicorn turnstile_api:app --workers 1 --threads 2 --timeout 300 --bind 0.0.0.0:${PORT:-10000}"]
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1366x768x24 &>/dev/null & export DISPLAY=:99 && gunicorn turnstile_api:app --workers 1 --threads 2 --timeout 300 --bind 0.0.0.0:${PORT:-10000}"]

@@ -24,6 +24,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import undetected_chromedriver as uc
 
 HEADLESS = os.environ.get('HEADLESS', '0') == '1'
+USE_HEADLESS = os.environ.get('NO_HEADLESS', '0') != '1' and HEADLESS
 CHROME_BIN = os.environ.get('CHROME_BIN')
 CHROMEDRIVER_BIN = os.environ.get('CHROMEDRIVER_BIN')
 
@@ -247,7 +248,7 @@ class TurnstileSolver:
         options.add_argument(f'--window-size={Config.SCREEN_WIDTH},{Config.SCREEN_HEIGHT}')
         options.add_argument('--accept-lang=pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7')
 
-        if HEADLESS:
+        if USE_HEADLESS:
             options.add_argument('--headless=new')
             options.add_argument('--no-sandbox')
             options.add_argument('--disable-dev-shm-usage')
@@ -309,7 +310,7 @@ class TurnstileSolver:
             print(f"[X] Erro ao criar driver: {e}")
             fallback_options = uc.ChromeOptions()
             fallback_options.add_argument('--disable-blink-features=AutomationControlled')
-            if HEADLESS:
+            if USE_HEADLESS:
                 fallback_options.add_argument('--headless=new')
                 fallback_options.add_argument('--no-sandbox')
                 fallback_options.add_argument('--disable-dev-shm-usage')
